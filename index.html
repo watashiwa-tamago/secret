@@ -1,179 +1,736 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fff5df">
-  <title>Runner Dash — a tiny challenge</title>
-  <style>
-    :root { color-scheme: light; --ink:#292633; --pink:#e77691; --cream:#fff; --lav:#eee8ff; }
-    * { box-sizing:border-box }
-    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:20px; color:var(--ink); font-family:Arial,system-ui,sans-serif; background:#f4f4f6; }
-    main { width:min(100%,520px); text-align:center }
-    .eyebrow { display:none }
-    h1 { margin:0; font-size:clamp(1.8rem,7vw,2.5rem); letter-spacing:-.03em }
-    .intro { margin:7px auto 16px; color:#666; line-height:1.45 }
-    .game-shell { padding:12px; border:1px solid #ddd; border-radius:12px; background:#fff; }
-    .hud { display:flex; justify-content:space-between; align-items:center; padding:2px 2px 10px; font-weight:700 }
-    .pill { color:#444; font-size:.92rem }
-    canvas { display:block; width:100%; height:auto; aspect-ratio: 480 / 340; border:1px solid #e5e5e5; border-radius:8px; background:#c9eeff; touch-action:manipulation }
-    .controls { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin:14px 0 10px }
-    button { border:0; border-radius:7px; padding:11px 18px; font:inherit; font-weight:700; cursor:pointer }
-    button:hover { filter:brightness(.96) }
-    button:focus-visible,input:focus-visible { outline:3px solid #7966c4; outline-offset:3px }
-    .primary { color:white; background:#e77691 }
-    .secondary { color:#333; background:#e9e9ed }
-    .hint { margin:7px 0 2px; color:#666; font-size:.88rem }
-    details { margin:14px 0 0; text-align:left; border:1px solid #ddd; border-radius:8px; background:#fff; padding:11px 13px; color:#555 }
-    summary { cursor:pointer; font-weight:700; color:#333 }
-    .photo-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px }
-    label { display:grid; gap:6px; font-size:.86rem; font-weight:700 }
-    input[type=file] { width:100%; font:inherit; font-size:.78rem }
-    .share-row { display:flex; gap:8px; margin-top:12px }
-    .share-row button { flex:1; padding:10px; font-size:.88rem }
-    .tiny { margin:10px 0 0; font-size:.76rem; color:#777; line-height:1.4 }
-    @media(max-width:420px) { body{padding:12px} .game-shell{padding:8px}.photo-row{grid-template-columns:1fr} }
-  </style>
-</head>
-<body>
-<main>
-  <p class="eyebrow">a tiny running challenge</p>
-  <h1>Runner Dash</h1>
-  <p class="intro">Help the runner jump over obstacles. Can you make it to the finish?</p>
-  <section class="game-shell" aria-label="Runner Dash game">
-    <div class="hud"><span class="pill" id="status">Ready?</span><span class="pill">Obstacles: <span id="score">0</span>/10</span></div>
-    <canvas id="game" width="480" height="340" aria-label="Game area. Click, tap, or press Space to jump over obstacles."></canvas>
-    <div class="controls"><button class="primary" id="start">Start game</button><button class="secondary" id="flap">Jump! ⬆</button></div>
-    <p class="hint">Press <b>Space</b>, click Jump, or tap the game to leap.</p>
-  </section>
-</main>
-<script>
-(() => {
-  const canvas = document.querySelector('#game');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height, ground = 276, finishAt = 10;
-  const scoreEl = document.querySelector('#score'), statusEl = document.querySelector('#status');
-  let runner = {x:92,y:ground-52,w:34,h:52,vy:0,onGround:true}, obstacles = [], score = 0, mode = 'ready', frame = 0, raf = 0, winImage = null, loseImage = null;
-  const params = new URLSearchParams(location.hash.slice(1));
-  const loadImage = src => new Promise(resolve => {
-    if (!src) return resolve(null);
-    const image = new Image(); image.onload = () => resolve(image); image.onerror = () => resolve(null); image.src = src;
-  });
-  const defaultPhoto = 'result-photo.jpg';
-  Promise.all([loadImage(params.get('win') || defaultPhoto), loadImage(params.get('lose') || defaultPhoto)]).then(([win, lose]) => { winImage = win; loseImage = lose; draw(); });
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#fff5df" />
+    <title>Runner Dash — a tiny challenge</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #292633;
+        --pink: #e77691;
+        --cream: #fff;
+        --lav: #eee8ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        color: var(--ink);
+        font-family: Arial, system-ui, sans-serif;
+        background: #ffe6ef;
+      }
+      main {
+        width: min(100%, 520px);
+        text-align: center;
+      }
+      .eyebrow {
+        display: none;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(1.8rem, 7vw, 2.5rem);
+        letter-spacing: -0.03em;
+      }
+      .intro {
+        margin: 7px auto 16px;
+        color: #666;
+        line-height: 1.45;
+      }
+      .game-shell {
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        background: #fff;
+      }
+      .hud {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 2px 10px;
+        font-weight: 700;
+      }
+      .pill {
+        color: #444;
+        font-size: 0.92rem;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 480 / 340;
+        border: 1px solid #f4bfd0;
+        border-radius: 8px;
+        background: #ffd2e1;
+        touch-action: manipulation;
+      }
+      .controls {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 14px 0 10px;
+      }
+      button {
+        border: 0;
+        border-radius: 7px;
+        padding: 11px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(0.96);
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 3px solid #7966c4;
+        outline-offset: 3px;
+      }
+      .primary {
+        color: white;
+        background: #e77691;
+      }
+      .secondary {
+        color: #333;
+        background: #e9e9ed;
+      }
+      .hint {
+        margin: 7px 0 2px;
+        color: #666;
+        font-size: 0.88rem;
+      }
+      details {
+        margin: 14px 0 0;
+        text-align: left;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fff;
+        padding: 11px 13px;
+        color: #555;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 700;
+        color: #333;
+      }
+      .photo-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.86rem;
+        font-weight: 700;
+      }
+      input[type="file"] {
+        width: 100%;
+        font: inherit;
+        font-size: 0.78rem;
+      }
+      .share-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .share-row button {
+        flex: 1;
+        padding: 10px;
+        font-size: 0.88rem;
+      }
+      .tiny {
+        margin: 10px 0 0;
+        font-size: 0.76rem;
+        color: #777;
+        line-height: 1.4;
+      }
+      @media (max-width: 420px) {
+        body {
+          padding: 12px;
+        }
+        .game-shell {
+          padding: 8px;
+        }
+        .photo-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">a tiny running challenge</p>
+      <h1>For u</h1>
+      <p class="intro">😒😒😒</p>
+      <section class="game-shell" aria-label="Runner Dash game">
+        <div class="hud">
+          <span class="pill" id="status">Ready?</span
+          ><span class="pill">Obstacles: <span id="score">0</span>/10</span>
+        </div>
+        <canvas
+          id="game"
+          width="480"
+          height="340"
+          aria-label="Game area. Click, tap, or press Space to jump over obstacles."
+        ></canvas>
+        <div class="controls">
+          <button class="primary" id="start">Start game</button
+          ><button class="secondary" id="flap">Jump! ⬆</button>
+        </div>
+        <p class="hint">
+          Press <b>Space</b>, click Jump, or tap the game to leap.
+        </p>
+      </section>
+    </main>
+    <script>
+      (() => {
+        const canvas = document.querySelector("#game");
+        const ctx = canvas.getContext("2d");
+        const W = canvas.width,
+          H = canvas.height,
+          ground = 276,
+          finishAt = 10;
+        const scoreEl = document.querySelector("#score"),
+          statusEl = document.querySelector("#status");
+        let runner = {
+            x: 92,
+            y: ground - 52,
+            w: 50,
+            h: 52,
+            vy: 0,
+            onGround: true,
+          },
+          obstacles = [],
+          score = 0,
+          mode = "ready",
+          frame = 0,
+          raf = 0,
+          winImage = null,
+          loseImage = null;
+        const params = new URLSearchParams(location.hash.slice(1));
+        const loadImage = (src) =>
+          new Promise((resolve) => {
+            if (!src) return resolve(null);
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => resolve(null);
+            image.src = src;
+          });
+        const defaultPhoto = "result-photo.jpg";
+        Promise.all([
+          loadImage(params.get("win") || defaultPhoto),
+          loadImage(params.get("lose") || defaultPhoto),
+        ]).then(([win, lose]) => {
+          winImage = win;
+          loseImage = lose;
+          draw();
+        });
 
-  function drawBackground() {
-    const sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#b8e9ff'); sky.addColorStop(1, '#fff1db');
-    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#ffffffbd';
-    [[75,74,1],[305,115,.75],[435,55,.55]].forEach(([x,y,s]) => {
-      const drift = (frame * .35) % (W + 100);
-      const cx = (x - drift + W + 100) % (W + 100) - 30;
-      ctx.beginPath(); ctx.arc(cx,y,15*s,0,Math.PI*2); ctx.arc(cx+20*s,y-7*s,21*s,0,Math.PI*2); ctx.arc(cx+43*s,y,15*s,0,Math.PI*2); ctx.fill();
-    });
-    ctx.fillStyle = '#cce8ac'; ctx.beginPath(); ctx.ellipse(70,ground+34,180,75,0,0,Math.PI*2); ctx.ellipse(390,ground+40,220,80,0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#a9d88e'; ctx.fillRect(0,ground,W,H-ground);
-    ctx.strokeStyle = '#779e62'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0,ground); ctx.lineTo(W,ground); ctx.stroke();
-    ctx.strokeStyle = '#8eb777'; ctx.lineWidth = 2;
-    for (let i=0;i<12;i++) { const x=(i*53-frame*2.2%(W+53)+W+53)%(W+53); ctx.beginPath();ctx.moveTo(x,ground+20);ctx.lineTo(x+12,ground+20);ctx.stroke(); }
-  }
+        function drawBackground() {
+          const sky = ctx.createLinearGradient(0, 0, 0, H);
+          sky.addColorStop(0, "#f5b7cf");
+          sky.addColorStop(0.62, "#ffe1eb");
+          sky.addColorStop(1, "#fff2f6");
+          ctx.fillStyle = sky;
+          ctx.fillRect(0, 0, W, H);
+          // pastel city buildings behind the running path
+          ctx.fillStyle = "#eaa4bc";
+          ctx.fillRect(-12, 101, 139, ground - 101);
+          ctx.fillStyle = "#d987a5";
+          ctx.fillRect(-12, 101, 139, 8);
+          ctx.fillRect(0, 110, 8, ground - 110);
+          ctx.fillStyle = "#ffd6e3";
+          ctx.fillRect(118, 59, 210, ground - 59);
+          ctx.fillStyle = "#d987a5";
+          ctx.fillRect(118, 59, 210, 9);
+          ctx.fillRect(118, 59, 8, ground - 59);
+          ctx.fillRect(320, 59, 8, ground - 59);
+          ctx.fillStyle = "#e99fb8";
+          ctx.fillRect(328, 86, 164, ground - 86);
+          ctx.fillStyle = "#d987a5";
+          ctx.fillRect(328, 86, 164, 8);
+          ctx.fillRect(484, 86, 8, ground - 86);
+          // rows of bright windows
+          function windowAt(wx, wy, ww = 25, wh = 22) {
+            ctx.fillStyle = "#fff0f5";
+            ctx.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
+            ctx.fillStyle = "#b9dce8";
+            ctx.fillRect(wx, wy, ww, wh);
+            ctx.fillStyle = "#e8f5f7";
+            ctx.fillRect(wx + 3, wy + 3, 6, wh - 6);
+            ctx.strokeStyle = "#d987a5";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(wx, wy, ww, wh);
+            ctx.beginPath();
+            ctx.moveTo(wx + ww / 2, wy);
+            ctx.lineTo(wx + ww / 2, wy + wh);
+            ctx.moveTo(wx, wy + wh / 2);
+            ctx.lineTo(wx + ww, wy + wh / 2);
+            ctx.stroke();
+          }
+          for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++)
+              windowAt(10 + col * 37, 119 + row * 38, 23, 22);
+            for (let col = 0; col < 4; col++)
+              windowAt(137 + col * 45, 81 + row * 37, 27, 23);
+            for (let col = 0; col < 3; col++)
+              windowAt(347 + col * 44, 105 + row * 39, 26, 23);
+          }
+          // shop awning and front windows
+          ctx.fillStyle = "#f27e9a";
+          ctx.fillRect(128, 198, 190, 9);
+          for (let i = 0; i < 10; i++) {
+            ctx.fillStyle = i % 2 ? "#fff0f5" : "#f27e9a";
+            ctx.fillRect(128 + i * 19, 198, 19, 15);
+          }
+          ctx.fillStyle = "#b9dce8";
+          ctx.fillRect(137, 216, 48, 40);
+          ctx.fillRect(192, 216, 47, 40);
+          ctx.fillRect(246, 216, 62, 40);
+          ctx.strokeStyle = "#d987a5";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(137, 216, 48, 40);
+          ctx.strokeRect(192, 216, 47, 40);
+          ctx.strokeRect(246, 216, 62, 40);
+          ctx.fillStyle = "#fff0f5";
+          ctx.fillRect(260, 225, 16, 31);
+          // sidewalk along the storefront
+          ctx.fillStyle = "#f1bfd0";
+          ctx.fillRect(0, ground - 17, W, 17);
+          ctx.strokeStyle = "#d987a5";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, ground - 17);
+          ctx.lineTo(W, ground - 17);
+          ctx.stroke();
+          ctx.fillStyle = "#eda4bf";
+          ctx.fillRect(0, ground, W, H - ground);
+          ctx.strokeStyle = "#ce7896";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(0, ground);
+          ctx.lineTo(W, ground);
+          ctx.stroke();
+          ctx.strokeStyle = "#db8eaa";
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 12; i++) {
+            const x = (i * 53 - ((frame * 2.2) % (W + 53)) + W + 53) % (W + 53);
+            ctx.beginPath();
+            ctx.moveTo(x, ground + 20);
+            ctx.lineTo(x + 12, ground + 20);
+            ctx.stroke();
+          }
+        }
 
-  function drawRunner() {
-    const x = runner.x, y = runner.y, running = mode === 'playing' && runner.onGround;
-    const stride = running ? Math.sin(frame*.35)*9 : 4;
-    ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
-    // legs and shoes
-    ctx.strokeStyle='#554765';ctx.lineWidth=7;
-    ctx.beginPath();ctx.moveTo(x+16,y+34);ctx.lineTo(x+14+stride,y+48);ctx.lineTo(x+5+stride,y+49);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(x+24,y+34);ctx.lineTo(x+27-stride,y+47);ctx.lineTo(x+35-stride,y+49);ctx.stroke();
-    ctx.fillStyle='#f27e9a';ctx.beginPath();ctx.roundRect(x+stride-2,y+45,15,7,4);ctx.fill();
-    ctx.beginPath();ctx.roundRect(x+29-stride,y+45,15,7,4);ctx.fill();
-    // arms, shirt, face, hair
-    ctx.strokeStyle='#e9a36f';ctx.lineWidth=6;
-    ctx.beginPath();ctx.moveTo(x+14,y+13);ctx.lineTo(x+5-stride*.5,y+24);ctx.lineTo(x+9-stride*.5,y+29);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(x+26,y+13);ctx.lineTo(x+34+stride*.5,y+22);ctx.lineTo(x+30+stride*.5,y+28);ctx.stroke();
-    ctx.fillStyle='#8e76d2';ctx.beginPath();ctx.roundRect(x+10,y+8,22,30,8);ctx.fill();
-    ctx.fillStyle='#f3bd91';ctx.beginPath();ctx.arc(x+21,y+1,12,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#493d50';ctx.beginPath();ctx.arc(x+20,y-3,12,Math.PI,Math.PI*2);ctx.lineTo(x+31,y+1);ctx.lineTo(x+11,y+2);ctx.fill();
-    ctx.fillStyle='#493d50';ctx.beginPath();ctx.arc(x+25,y+2,1.5,0,Math.PI*2);ctx.fill();
-    ctx.restore();
-  }
+        function drawRunner() {
+          const x = runner.x,
+            y = runner.y,
+            running = mode === "playing" && runner.onGround;
+          const stride = running ? Math.sin(frame * 0.35) * 9 : 4;
+          ctx.save();
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          // soft ground shadow and swishing tail
+          ctx.fillStyle = "#526c5850";
+          ctx.beginPath();
+          ctx.ellipse(x + 21, ground + 2, 20, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#d98742";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(x + 13, y + 29);
+          ctx.bezierCurveTo(x + 1, y + 23, x + 7, y + 9, x + 17, y + 16);
+          ctx.stroke();
+          ctx.fillStyle = "#f5bd78";
+          ctx.beginPath();
+          ctx.arc(x + 17, y + 16, 3, 0, Math.PI * 2);
+          ctx.fill();
+          // running paws
+          ctx.strokeStyle = "#c97838";
+          ctx.lineWidth = 4.5;
+          ctx.beginPath();
+          ctx.moveTo(x + 16, y + 33);
+          ctx.lineTo(x + 12 + stride, y + 43);
+          ctx.lineTo(x + 8 + stride, y + 47);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + 25, y + 34);
+          ctx.lineTo(x + 27 - stride, y + 43);
+          ctx.lineTo(x + 32 - stride, y + 47);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + 30, y + 26);
+          ctx.lineTo(x + 36 + stride * 0.4, y + 34);
+          ctx.lineTo(x + 39 + stride * 0.4, y + 39);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + 32, y + 29);
+          ctx.lineTo(x + 31 - stride * 0.4, y + 38);
+          ctx.lineTo(x + 35 - stride * 0.4, y + 42);
+          ctx.stroke();
+          ctx.fillStyle = "#fff0d9";
+          [
+            [8 + stride, 47],
+            [32 - stride, 47],
+            [39 + stride * 0.4, 39],
+            [35 - stride * 0.4, 42],
+          ].forEach(([px, py]) => {
+            ctx.beginPath();
+            ctx.ellipse(x + px, y + py, 4, 2.7, -0.1, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          // ginger cat body and cream belly
+          ctx.fillStyle = "#f3a65d";
+          ctx.beginPath();
+          ctx.ellipse(x + 22, y + 29, 16, 10, -0.08, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#fff0d9";
+          ctx.beginPath();
+          ctx.ellipse(x + 25, y + 33, 9, 5, 0.12, 0, Math.PI * 2);
+          ctx.fill();
+          // little ginger stripes
+          ctx.strokeStyle = "#d98742";
+          ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          ctx.moveTo(x + 15, y + 23);
+          ctx.lineTo(x + 17, y + 28);
+          ctx.moveTo(x + 20, y + 21);
+          ctx.lineTo(x + 22, y + 25);
+          ctx.stroke();
+          // teal collar and flying scarf end
+          ctx.fillStyle = "#45b8b0";
+          ctx.beginPath();
+          ctx.roundRect(x + 28, y + 23, 10, 5, 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x + 30, y + 27);
+          ctx.lineTo(x + 26, y + 35);
+          ctx.lineTo(x + 32, y + 32);
+          ctx.closePath();
+          ctx.fill();
+          // cat head, ears, and pink inner ears
+          ctx.fillStyle = "#f3a65d";
+          ctx.beginPath();
+          ctx.moveTo(x + 26, y + 12);
+          ctx.lineTo(x + 27, y + 1);
+          ctx.lineTo(x + 36, y + 8);
+          ctx.quadraticCurveTo(x + 44, y + 7, x + 49, y + 14);
+          ctx.lineTo(x + 47, y + 25);
+          ctx.quadraticCurveTo(x + 38, y + 32, x + 29, y + 24);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#ef9aaf";
+          ctx.beginPath();
+          ctx.moveTo(x + 29, y + 9);
+          ctx.lineTo(x + 29, y + 4);
+          ctx.lineTo(x + 34, y + 9);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#ef9aaf";
+          ctx.beginPath();
+          ctx.moveTo(x + 43, y + 10);
+          ctx.lineTo(x + 48, y + 14);
+          ctx.lineTo(x + 43, y + 15);
+          ctx.closePath();
+          ctx.fill();
+          // muzzle, eye, nose, and whiskers
+          ctx.fillStyle = "#fff0d9";
+          ctx.beginPath();
+          ctx.ellipse(x + 44, y + 21, 6, 4.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#493d50";
+          ctx.beginPath();
+          ctx.ellipse(x + 40, y + 16, 1.7, 2.3, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#df7890";
+          ctx.beginPath();
+          ctx.moveTo(x + 49, y + 19);
+          ctx.lineTo(x + 52, y + 21);
+          ctx.lineTo(x + 48, y + 22);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = "#9b6b65";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x + 44, y + 22);
+          ctx.lineTo(x + 53, y + 19);
+          ctx.moveTo(x + 45, y + 23);
+          ctx.lineTo(x + 54, y + 24);
+          ctx.stroke();
+          ctx.restore();
+        }
 
-  function drawObstacles() {
-    obstacles.forEach(o => {
-      ctx.fillStyle = '#6ca778'; ctx.beginPath(); ctx.roundRect(o.x,ground-o.h,o.w,o.h,7); ctx.fill();
-      ctx.fillStyle = '#8fc38b'; ctx.fillRect(o.x+5,ground-o.h+5,5,o.h-10);
-      ctx.fillStyle = '#6ca778'; ctx.beginPath();
-      ctx.roundRect(o.x-8,ground-o.h+14,10,7,3); ctx.roundRect(o.x+o.w-2,ground-o.h+24,10,7,3); ctx.fill();
-    });
-  }
+        function drawObstacles() {
+          obstacles.forEach((o) => {
+            const top = ground - o.h;
+            // orange road barrier with white reflective stripes
+            ctx.fillStyle = "#e8794e";
+            ctx.beginPath();
+            ctx.roundRect(o.x, top, o.w, o.h, 5);
+            ctx.fill();
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(o.x + 2, top + 3, o.w - 4, o.h - 7, 3);
+            ctx.clip();
+            ctx.fillStyle = "#fff4da";
+            for (let stripe = -o.h; stripe < o.w + o.h; stripe += 15) {
+              ctx.beginPath();
+              ctx.moveTo(o.x + stripe, top + o.h - 6);
+              ctx.lineTo(o.x + stripe + 7, top + o.h - 6);
+              ctx.lineTo(o.x + stripe + o.h * 0.65 + 7, top + 2);
+              ctx.lineTo(o.x + stripe + o.h * 0.65, top + 2);
+              ctx.closePath();
+              ctx.fill();
+            }
+            ctx.restore();
+            ctx.fillStyle = "#bd593c";
+            ctx.beginPath();
+            ctx.roundRect(o.x - 5, ground - 7, o.w + 10, 7, 3);
+            ctx.fill();
+            ctx.fillStyle = "#f3a45d";
+            ctx.beginPath();
+            ctx.arc(o.x + o.w / 2, top + 5, 2, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
 
-  function drawResult(title, subtitle, image) {
-    ctx.fillStyle='#322c426b';ctx.fillRect(0,0,W,H);
-    ctx.fillStyle='#fffaf0';ctx.beginPath();ctx.roundRect(55,35,370,270,24);ctx.fill();
-    let titleY=132;
-    if (image) {
-      ctx.save();ctx.beginPath();ctx.roundRect(W/2-67,52,134,110,18);ctx.clip();
-      const scale=Math.max(134/image.width,110/image.height), iw=image.width*scale, ih=image.height*scale;
-      ctx.drawImage(image,W/2-iw/2,107-ih/2,iw,ih);ctx.restore();titleY=202;
-    } else { ctx.font='58px system-ui';ctx.textAlign='center';ctx.fillText(title==='You win!'?'🎉':'😅',W/2,125);titleY=176; }
-    ctx.fillStyle='#493d5b';ctx.font='800 27px system-ui';ctx.textAlign='center';ctx.fillText(title,W/2,titleY);
-    ctx.fillStyle='#786d83';ctx.font='15px system-ui';ctx.fillText(subtitle,W/2,titleY+27);
-    ctx.fillStyle='#e9789c';ctx.beginPath();ctx.roundRect(W/2-75,titleY+45,150,40,20);ctx.fill();
-    ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(title==='Ready to run?'?'Start running':'Play again',W/2,titleY+71);
-  }
+        function drawResult(title, subtitle, image, buttonLabel) {
+          ctx.fillStyle = "#322c426b";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#fffaf0";
+          ctx.beginPath();
+          ctx.roundRect(55, 35, 370, 270, 24);
+          ctx.fill();
+          let titleY = 132;
+          if (image) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(W / 2 - 67, 52, 134, 110, 18);
+            ctx.clip();
+            const scale = Math.max(134 / image.width, 110 / image.height),
+              iw = image.width * scale,
+              ih = image.height * scale;
+            ctx.drawImage(image, W / 2 - iw / 2, 107 - ih / 2, iw, ih);
+            ctx.restore();
+            titleY = 202;
+          } else {
+            ctx.font = "58px system-ui";
+            ctx.textAlign = "center";
+            ctx.fillText(title === "You win!" ? "🎉" : "😅", W / 2, 125);
+            titleY = 176;
+          }
+          ctx.fillStyle = "#493d5b";
+          ctx.font = "800 27px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText(title, W / 2, titleY);
+          ctx.fillStyle = "#786d83";
+          ctx.font = "15px system-ui";
+          ctx.fillText(subtitle, W / 2, titleY + 27);
+          ctx.fillStyle = "#e9789c";
+          ctx.beginPath();
+          ctx.roundRect(W / 2 - 75, titleY + 45, 150, 40, 20);
+          ctx.fill();
+          ctx.fillStyle = "white";
+          ctx.font = "bold 14px system-ui";
+          ctx.fillText(
+            buttonLabel ||
+              (title === "Ready to run?" ? "Start running" : "Play again"),
+            W / 2,
+            titleY + 71,
+          );
+        }
 
-  function draw() {
-    drawBackground();
-    if (mode !== 'ready') drawObstacles();
-    drawRunner();
-    if (mode === 'ready') drawResult('Ready to run?','Jump over 10 obstacles to win!',null);
-    if (mode === 'won') drawResult('You win!','You made it to the finish! 💛',winImage);
-    if (mode === 'lost') drawResult('You hit an obstacle!','Give it another try. You can do it!',loseImage);
-  }
+        function drawLetter() {
+          ctx.fillStyle = "#322c426b";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#fffaf0";
+          ctx.beginPath();
+          ctx.roundRect(42, 24, 396, 292, 19);
+          ctx.fill();
+          ctx.strokeStyle = "#f3c3d1";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(51, 33, 378, 274, 13);
+          ctx.stroke();
+          ctx.fillStyle = "#e77691";
+          ctx.textAlign = "center";
+          ctx.font = "bold 12px system-ui";
+          ctx.fillText("A LITTLE NOTE FOR YOU", W / 2, 57);
+          ctx.fillStyle = "#493d5b";
+          ctx.textAlign = "left";
+          ctx.font = "17px Georgia,serif";
+          ctx.fillText("Dear Christopher bayot,", 74, 91);
+          ctx.font = "15px Georgia,serif";
+          const message =
+            "Feel gyud nako bayot gyud kaXD. Idok raba ka nako ay, pagpatope na ug buhok! palamoot ra sad ka adtong natunok kas isda. btaw cute kayka BAHAHHAHAHHAHAHHAHA basig";
+          const lines = [];
+          let line = "";
+          for (const word of message.split(" ")) {
+            const next = line ? line + " " + word : word;
+            if (ctx.measureText(next).width > 330 && line) {
+              lines.push(line);
+              line = word;
+            } else line = next;
+          }
+          if (line) lines.push(line);
+          ctx.fillStyle = "#655b68";
+          lines.forEach((text, index) =>
+            ctx.fillText(text, 74, 122 + index * 22),
+          );
+          ctx.fillStyle = "#493d5b";
+          ctx.font = "16px Georgia,serif";
+          ctx.fillText("sami:p", 74, 122 + lines.length * 22 + 10);
+          ctx.fillStyle = "#e9789c";
+          ctx.beginPath();
+          ctx.roundRect(W / 2 - 75, 258, 150, 39, 20);
+          ctx.fill();
+          ctx.fillStyle = "white";
+          ctx.textAlign = "center";
+          ctx.font = "bold 14px system-ui";
+          ctx.fillText("Play again", W / 2, 283);
+        }
 
-  function startGame() {
-    cancelAnimationFrame(raf); score=0;frame=0;mode='playing';
-    runner={x:92,y:ground-52,w:34,h:52,vy:0,onGround:true};
-    obstacles=[{x:W+360,w:27,h:42,passed:false}];
-    scoreEl.textContent='0';statusEl.textContent='Run!';
-    raf=requestAnimationFrame(tick);
-  }
+        function draw() {
+          document.querySelector("#flap").textContent =
+            mode === "won"
+              ? "Open letter 💌"
+              : mode === "letter"
+                ? "Play again"
+                : "Jump! ⬆";
+          drawBackground();
+          if (mode !== "ready") drawObstacles();
+          drawRunner();
+          if (mode === "ready")
+            drawResult(
+              "Ready to run",
+              "complete the obstacle dawg or else",
+              null,
+            );
+          if (mode === "won")
+            drawResult(
+              "You win!",
+              "Tap to open your letter 💌",
+              winImage,
+              "Open letter 💌",
+            );
+          if (mode === "letter") drawLetter();
+          if (mode === "lost") drawResult("nahhh", "bogoa nimo uy!", loseImage);
+        }
 
-  function jump() {
-    if (mode==='ready'||mode==='won'||mode==='lost') startGame();
-    if (runner.onGround) { runner.vy=-10.5;runner.onGround=false; }
-  }
+        function startGame() {
+          cancelAnimationFrame(raf);
+          score = 0;
+          frame = 0;
+          mode = "playing";
+          runner = {
+            x: 92,
+            y: ground - 52,
+            w: 50,
+            h: 52,
+            vy: 0,
+            onGround: true,
+          };
+          obstacles = [{ x: W + 360, w: 27, h: 42, passed: false }];
+          scoreEl.textContent = "0";
+          statusEl.textContent = "Run!";
+          raf = requestAnimationFrame(tick);
+        }
 
-  function endGame(won) {
-    mode=won?'won':'lost';statusEl.textContent=won?'Winner!':'Try again!';cancelAnimationFrame(raf);draw();
-  }
+        function jump() {
+          if (mode === "won") {
+            mode = "letter";
+            statusEl.textContent = "Your letter";
+            draw();
+            return;
+          }
+          if (mode === "letter") {
+            startGame();
+            return;
+          }
+          if (mode === "ready" || mode === "lost") startGame();
+          if (runner.onGround) {
+            runner.vy = -10.5;
+            runner.onGround = false;
+          }
+        }
 
-  function tick() {
-    frame++;runner.vy+=.48;runner.y+=runner.vy;
-    if (runner.y>=ground-runner.h) {runner.y=ground-runner.h;runner.vy=0;runner.onGround=true;}
-    const speed=4.2+Math.min(score*.12,1.8);
-    obstacles.forEach(o=>{
-      o.x-=speed;
-      if(!o.passed&&o.x+o.w<runner.x){o.passed=true;score++;scoreEl.textContent=String(score);if(score>=finishAt){endGame(true);return;}}
-      const hitX=runner.x+runner.w-5>o.x&&runner.x+5<o.x+o.w;
-      const hitY=runner.y+runner.h-4>ground-o.h;
-      if(hitX&&hitY){endGame(false);return;}
-    });
-    if(mode!=='playing')return;
-    obstacles=obstacles.filter(o=>o.x>-50);
-    if(obstacles.length===0||obstacles[obstacles.length-1].x<W-170){obstacles.push({x:W+Math.random()*110,w:24+Math.random()*12,h:32+Math.random()*23,passed:false});}
-    draw();raf=requestAnimationFrame(tick);
-  }
+        function endGame(won) {
+          mode = won ? "won" : "lost";
+          statusEl.textContent = won ? "Winner!" : "Try again!";
+          cancelAnimationFrame(raf);
+          draw();
+        }
 
-  document.querySelector('#start').addEventListener('click',startGame);
-  document.querySelector('#flap').addEventListener('click',jump);
-  canvas.addEventListener('pointerdown',e=>{e.preventDefault();jump();});
-  window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();if(!e.repeat)jump();}});
+        function tick() {
+          frame++;
+          runner.vy += 0.48;
+          runner.y += runner.vy;
+          if (runner.y >= ground - runner.h) {
+            runner.y = ground - runner.h;
+            runner.vy = 0;
+            runner.onGround = true;
+          }
+          const speed = 4.2 + Math.min(score * 0.12, 1.8);
+          obstacles.forEach((o) => {
+            o.x -= speed;
+            if (!o.passed && o.x + o.w < runner.x) {
+              o.passed = true;
+              score++;
+              scoreEl.textContent = String(score);
+              if (score >= finishAt) {
+                endGame(true);
+                return;
+              }
+            }
+            const hitX =
+              runner.x + runner.w - 5 > o.x && runner.x + 5 < o.x + o.w;
+            const hitY = runner.y + runner.h - 4 > ground - o.h;
+            if (hitX && hitY) {
+              endGame(false);
+              return;
+            }
+          });
+          if (mode !== "playing") return;
+          obstacles = obstacles.filter((o) => o.x > -50);
+          if (
+            obstacles.length === 0 ||
+            obstacles[obstacles.length - 1].x < W - 170
+          ) {
+            obstacles.push({
+              x: W + Math.random() * 110,
+              w: 24 + Math.random() * 12,
+              h: 32 + Math.random() * 23,
+              passed: false,
+            });
+          }
+          draw();
+          raf = requestAnimationFrame(tick);
+        }
 
-  draw();
-})();
-</script>
-</body>
+        document.querySelector("#start").addEventListener("click", startGame);
+        document.querySelector("#flap").addEventListener("click", jump);
+        canvas.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          jump();
+        });
+        window.addEventListener("keydown", (e) => {
+          if (e.code === "Space" || e.code === "ArrowUp") {
+            e.preventDefault();
+            if (!e.repeat) jump();
+          }
+        });
+
+        draw();
+      })();
+    </script>
+  </body>
 </html>
