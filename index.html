@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff5df">
+  <title>Runner Dash — a tiny challenge</title>
+  <style>
+    :root { color-scheme: light; --ink:#292633; --pink:#e77691; --cream:#fff; --lav:#eee8ff; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:20px; color:var(--ink); font-family:Arial,system-ui,sans-serif; background:#f4f4f6; }
+    main { width:min(100%,520px); text-align:center }
+    .eyebrow { display:none }
+    h1 { margin:0; font-size:clamp(1.8rem,7vw,2.5rem); letter-spacing:-.03em }
+    .intro { margin:7px auto 16px; color:#666; line-height:1.45 }
+    .game-shell { padding:12px; border:1px solid #ddd; border-radius:12px; background:#fff; }
+    .hud { display:flex; justify-content:space-between; align-items:center; padding:2px 2px 10px; font-weight:700 }
+    .pill { color:#444; font-size:.92rem }
+    canvas { display:block; width:100%; height:auto; aspect-ratio: 480 / 340; border:1px solid #e5e5e5; border-radius:8px; background:#c9eeff; touch-action:manipulation }
+    .controls { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin:14px 0 10px }
+    button { border:0; border-radius:7px; padding:11px 18px; font:inherit; font-weight:700; cursor:pointer }
+    button:hover { filter:brightness(.96) }
+    button:focus-visible,input:focus-visible { outline:3px solid #7966c4; outline-offset:3px }
+    .primary { color:white; background:#e77691 }
+    .secondary { color:#333; background:#e9e9ed }
+    .hint { margin:7px 0 2px; color:#666; font-size:.88rem }
+    details { margin:14px 0 0; text-align:left; border:1px solid #ddd; border-radius:8px; background:#fff; padding:11px 13px; color:#555 }
+    summary { cursor:pointer; font-weight:700; color:#333 }
+    .photo-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px }
+    label { display:grid; gap:6px; font-size:.86rem; font-weight:700 }
+    input[type=file] { width:100%; font:inherit; font-size:.78rem }
+    .share-row { display:flex; gap:8px; margin-top:12px }
+    .share-row button { flex:1; padding:10px; font-size:.88rem }
+    .tiny { margin:10px 0 0; font-size:.76rem; color:#777; line-height:1.4 }
+    @media(max-width:420px) { body{padding:12px} .game-shell{padding:8px}.photo-row{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">a tiny running challenge</p>
+  <h1>Runner Dash</h1>
+  <p class="intro">Help the runner jump over obstacles. Can you make it to the finish?</p>
+  <section class="game-shell" aria-label="Runner Dash game">
+    <div class="hud"><span class="pill" id="status">Ready?</span><span class="pill">Obstacles: <span id="score">0</span>/10</span></div>
+    <canvas id="game" width="480" height="340" aria-label="Game area. Click, tap, or press Space to jump over obstacles."></canvas>
+    <div class="controls"><button class="primary" id="start">Start game</button><button class="secondary" id="flap">Jump! ⬆</button></div>
+    <p class="hint">Press <b>Space</b>, click Jump, or tap the game to leap.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const canvas = document.querySelector('#game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height, ground = 276, finishAt = 10;
+  const scoreEl = document.querySelector('#score'), statusEl = document.querySelector('#status');
+  let runner = {x:92,y:ground-52,w:34,h:52,vy:0,onGround:true}, obstacles = [], score = 0, mode = 'ready', frame = 0, raf = 0, winImage = null, loseImage = null;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const loadImage = src => new Promise(resolve => {
+    if (!src) return resolve(null);
+    const image = new Image(); image.onload = () => resolve(image); image.onerror = () => resolve(null); image.src = src;
+  });
+  const defaultPhoto = 'result-photo.jpg';
+  Promise.all([loadImage(params.get('win') || defaultPhoto), loadImage(params.get('lose') || defaultPhoto)]).then(([win, lose]) => { winImage = win; loseImage = lose; draw(); });
+
+  function drawBackground() {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#b8e9ff'); sky.addColorStop(1, '#fff1db');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffffffbd';
+    [[75,74,1],[305,115,.75],[435,55,.55]].forEach(([x,y,s]) => {
+      const drift = (frame * .35) % (W + 100);
+      const cx = (x - drift + W + 100) % (W + 100) - 30;
+      ctx.beginPath(); ctx.arc(cx,y,15*s,0,Math.PI*2); ctx.arc(cx+20*s,y-7*s,21*s,0,Math.PI*2); ctx.arc(cx+43*s,y,15*s,0,Math.PI*2); ctx.fill();
+    });
+    ctx.fillStyle = '#cce8ac'; ctx.beginPath(); ctx.ellipse(70,ground+34,180,75,0,0,Math.PI*2); ctx.ellipse(390,ground+40,220,80,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#a9d88e'; ctx.fillRect(0,ground,W,H-ground);
+    ctx.strokeStyle = '#779e62'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0,ground); ctx.lineTo(W,ground); ctx.stroke();
+    ctx.strokeStyle = '#8eb777'; ctx.lineWidth = 2;
+    for (let i=0;i<12;i++) { const x=(i*53-frame*2.2%(W+53)+W+53)%(W+53); ctx.beginPath();ctx.moveTo(x,ground+20);ctx.lineTo(x+12,ground+20);ctx.stroke(); }
+  }
+
+  function drawRunner() {
+    const x = runner.x, y = runner.y, running = mode === 'playing' && runner.onGround;
+    const stride = running ? Math.sin(frame*.35)*9 : 4;
+    ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+    // legs and shoes
+    ctx.strokeStyle='#554765';ctx.lineWidth=7;
+    ctx.beginPath();ctx.moveTo(x+16,y+34);ctx.lineTo(x+14+stride,y+48);ctx.lineTo(x+5+stride,y+49);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+24,y+34);ctx.lineTo(x+27-stride,y+47);ctx.lineTo(x+35-stride,y+49);ctx.stroke();
+    ctx.fillStyle='#f27e9a';ctx.beginPath();ctx.roundRect(x+stride-2,y+45,15,7,4);ctx.fill();
+    ctx.beginPath();ctx.roundRect(x+29-stride,y+45,15,7,4);ctx.fill();
+    // arms, shirt, face, hair
+    ctx.strokeStyle='#e9a36f';ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(x+14,y+13);ctx.lineTo(x+5-stride*.5,y+24);ctx.lineTo(x+9-stride*.5,y+29);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x+26,y+13);ctx.lineTo(x+34+stride*.5,y+22);ctx.lineTo(x+30+stride*.5,y+28);ctx.stroke();
+    ctx.fillStyle='#8e76d2';ctx.beginPath();ctx.roundRect(x+10,y+8,22,30,8);ctx.fill();
+    ctx.fillStyle='#f3bd91';ctx.beginPath();ctx.arc(x+21,y+1,12,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#493d50';ctx.beginPath();ctx.arc(x+20,y-3,12,Math.PI,Math.PI*2);ctx.lineTo(x+31,y+1);ctx.lineTo(x+11,y+2);ctx.fill();
+    ctx.fillStyle='#493d50';ctx.beginPath();ctx.arc(x+25,y+2,1.5,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    obstacles.forEach(o => {
+      ctx.fillStyle = '#6ca778'; ctx.beginPath(); ctx.roundRect(o.x,ground-o.h,o.w,o.h,7); ctx.fill();
+      ctx.fillStyle = '#8fc38b'; ctx.fillRect(o.x+5,ground-o.h+5,5,o.h-10);
+      ctx.fillStyle = '#6ca778'; ctx.beginPath();
+      ctx.roundRect(o.x-8,ground-o.h+14,10,7,3); ctx.roundRect(o.x+o.w-2,ground-o.h+24,10,7,3); ctx.fill();
+    });
+  }
+
+  function drawResult(title, subtitle, image) {
+    ctx.fillStyle='#322c426b';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fffaf0';ctx.beginPath();ctx.roundRect(55,35,370,270,24);ctx.fill();
+    let titleY=132;
+    if (image) {
+      ctx.save();ctx.beginPath();ctx.roundRect(W/2-67,52,134,110,18);ctx.clip();
+      const scale=Math.max(134/image.width,110/image.height), iw=image.width*scale, ih=image.height*scale;
+      ctx.drawImage(image,W/2-iw/2,107-ih/2,iw,ih);ctx.restore();titleY=202;
+    } else { ctx.font='58px system-ui';ctx.textAlign='center';ctx.fillText(title==='You win!'?'🎉':'😅',W/2,125);titleY=176; }
+    ctx.fillStyle='#493d5b';ctx.font='800 27px system-ui';ctx.textAlign='center';ctx.fillText(title,W/2,titleY);
+    ctx.fillStyle='#786d83';ctx.font='15px system-ui';ctx.fillText(subtitle,W/2,titleY+27);
+    ctx.fillStyle='#e9789c';ctx.beginPath();ctx.roundRect(W/2-75,titleY+45,150,40,20);ctx.fill();
+    ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(title==='Ready to run?'?'Start running':'Play again',W/2,titleY+71);
+  }
+
+  function draw() {
+    drawBackground();
+    if (mode !== 'ready') drawObstacles();
+    drawRunner();
+    if (mode === 'ready') drawResult('Ready to run?','Jump over 10 obstacles to win!',null);
+    if (mode === 'won') drawResult('You win!','You made it to the finish! 💛',winImage);
+    if (mode === 'lost') drawResult('You hit an obstacle!','Give it another try. You can do it!',loseImage);
+  }
+
+  function startGame() {
+    cancelAnimationFrame(raf); score=0;frame=0;mode='playing';
+    runner={x:92,y:ground-52,w:34,h:52,vy:0,onGround:true};
+    obstacles=[{x:W+360,w:27,h:42,passed:false}];
+    scoreEl.textContent='0';statusEl.textContent='Run!';
+    raf=requestAnimationFrame(tick);
+  }
+
+  function jump() {
+    if (mode==='ready'||mode==='won'||mode==='lost') startGame();
+    if (runner.onGround) { runner.vy=-10.5;runner.onGround=false; }
+  }
+
+  function endGame(won) {
+    mode=won?'won':'lost';statusEl.textContent=won?'Winner!':'Try again!';cancelAnimationFrame(raf);draw();
+  }
+
+  function tick() {
+    frame++;runner.vy+=.48;runner.y+=runner.vy;
+    if (runner.y>=ground-runner.h) {runner.y=ground-runner.h;runner.vy=0;runner.onGround=true;}
+    const speed=4.2+Math.min(score*.12,1.8);
+    obstacles.forEach(o=>{
+      o.x-=speed;
+      if(!o.passed&&o.x+o.w<runner.x){o.passed=true;score++;scoreEl.textContent=String(score);if(score>=finishAt){endGame(true);return;}}
+      const hitX=runner.x+runner.w-5>o.x&&runner.x+5<o.x+o.w;
+      const hitY=runner.y+runner.h-4>ground-o.h;
+      if(hitX&&hitY){endGame(false);return;}
+    });
+    if(mode!=='playing')return;
+    obstacles=obstacles.filter(o=>o.x>-50);
+    if(obstacles.length===0||obstacles[obstacles.length-1].x<W-170){obstacles.push({x:W+Math.random()*110,w:24+Math.random()*12,h:32+Math.random()*23,passed:false});}
+    draw();raf=requestAnimationFrame(tick);
+  }
+
+  document.querySelector('#start').addEventListener('click',startGame);
+  document.querySelector('#flap').addEventListener('click',jump);
+  canvas.addEventListener('pointerdown',e=>{e.preventDefault();jump();});
+  window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();if(!e.repeat)jump();}});
+
+  draw();
+})();
+</script>
+</body>
+</html>
